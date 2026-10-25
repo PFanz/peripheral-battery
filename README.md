@@ -17,7 +17,16 @@ A tiny local service that parses battery packets pushed by the official Inphic d
 
 ## 安装
 
-### 1. 运行服务
+### 方式一：安装包（推荐，无需 Python）
+
+从 [Releases](https://github.com/PFanz/peripheral-battery/releases) 下载：
+
+- `peripheral-battery-setup.exe` — 自解压安装包，双击即完成：安装服务到 `%LOCALAPPDATA%\peripheral-battery`、注册开机自启（HKCU Run）、自动探测 LiteMonitor 并部署插件
+- `peripheral-battery-portable-win64.zip` — 绿色便携版，解压后运行 `install.bat` / 卸载运行 `uninstall.bat`
+
+安装后打开 LiteMonitor → 插件设置 → 启用「鼠标电量」即可。
+
+### 方式二：从源码运行
 
 ```bash
 pip install websocket-client
@@ -28,15 +37,29 @@ python service/peripheral_battery_service.py
 
 验证：浏览器打开 <http://127.0.0.1:8712/battery>。
 
-开机自启：把 `startup/peripheral_battery.vbs`（按注释改好两个路径）放入 `shell:startup` 文件夹。
+开机自启（源码方式）：把 `startup/peripheral_battery.vbs`（按注释改好两个路径）放入 `shell:startup` 文件夹。
 
-### 2. 安装 LiteMonitor 插件
+### 3. 安装 LiteMonitor 插件
 
 把 `plugins/MouseBattery.json` 复制到 LiteMonitor 的 `resources/plugins/` 目录，重启 LiteMonitor，在插件设置中启用「鼠标电量」。
 
 ## 协议细节
 
 见 [docs/protocol.md](docs/protocol.md)。
+
+## 打包说明（维护者）
+
+```bash
+# 1. 打单文件 exe（需要 PyInstaller）
+pyinstaller --onefile --noconsole --name peripheral_battery_service service/peripheral_battery_service.py
+
+# 2a. 便携包：exe + plugins/MouseBattery.json + packaging/*.bat 打成 zip
+# 2b. 自解压安装包（需要 7-Zip）：
+7z a payload.7z peripheral_battery_service.exe MouseBattery.json install.bat uninstall.bat PORTABLE_README.txt
+copy /b "C:\Program Files\7-Zip\7z.sfx" + config.txt + payload.7z peripheral-battery-setup.exe
+```
+
+`packaging/` 目录含 install.bat / uninstall.bat / PORTABLE_README.txt。
 
 ## 致谢
 

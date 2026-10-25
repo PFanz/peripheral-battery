@@ -34,8 +34,14 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import websocket
 
 WS_URL = "ws://localhost:10085"
-HTTP_HOST, HTTP_PORT = "127.0.0.1", 8712
-LOG_FILE = __file__.rsplit(".", 1)[0] + ".log"
+HTTP_HOST = "127.0.0.1"
+HTTP_PORT = int(os.environ.get("PB_HTTP_PORT", "8712"))  # override for tests
+if getattr(sys, "frozen", False):
+    # PyInstaller: put the log next to the real exe, not the temp extraction dir
+    _APP_DIR = os.path.dirname(os.path.abspath(sys.executable))
+else:
+    _APP_DIR = os.path.dirname(os.path.abspath(__file__))
+LOG_FILE = os.path.join(_APP_DIR, "peripheral_battery_service.log")
 
 # Capture hard crashes (C-level) and uncaught exceptions to the log file.
 _fault_stream = open(LOG_FILE, "a", encoding="utf-8", buffering=1)
