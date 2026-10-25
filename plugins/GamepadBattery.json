@@ -1,0 +1,47 @@
+{
+  "id": "GamepadBattery",
+  "meta": {
+    "name": "手柄电量",
+    "version": "1.0",
+    "author": "peripheral-battery",
+    "description": "显示飞智手柄（黑武士2 Pro 等经典协议）电量，数据来自本地 peripheral_battery_service.py（每60秒查询一次接收器）。电量为电压估算值，<20%变黄，<10%变红"
+  },
+  "inputs": [],
+  "execution": {
+    "type": "chain",
+    "interval": 60,
+    "steps": [
+      {
+        "id": "fetch_gamepad",
+        "url": "http://127.0.0.1:8712/gamepad",
+        "method": "GET",
+        "response_format": "json",
+        "extract": {
+          "level": "level"
+        },
+        "process": [
+          {
+            "var": "gamepad_color",
+            "source": "level",
+            "function": "threshold_switch",
+            "value_map": {
+              "0": "2",
+              "10": "1",
+              "20": "0"
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "outputs": [
+    {
+      "key": "battery",
+      "label": "手柄",
+      "short_label": "🎮",
+      "format_val": "{{level}}",
+      "unit": "%",
+      "color": "{{gamepad_color}}"
+    }
+  ]
+}

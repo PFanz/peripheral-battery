@@ -1,0 +1,58 @@
+{
+  "id": "MouseBattery",
+  "meta": {
+    "name": "鼠标电量",
+    "version": "1.0",
+    "author": "peripheral-battery",
+    "description": "显示英菲克无线鼠标电量（需本机运行 peripheral_battery_service.py，且已安装英菲克官方驱动）。电量<20%变黄，<10%变红，充电中显示⚡"
+  },
+  "inputs": [],
+  "execution": {
+    "type": "chain",
+    "interval": 60,
+    "steps": [
+      {
+        "id": "fetch_battery",
+        "url": "http://127.0.0.1:8712/battery",
+        "method": "GET",
+        "response_format": "json",
+        "extract": {
+          "level": "level",
+          "status": "status"
+        },
+        "process": [
+          {
+            "var": "battery_color",
+            "source": "level",
+            "function": "threshold_switch",
+            "value_map": {
+              "0": "2",
+              "10": "1",
+              "20": "0"
+            }
+          },
+          {
+            "var": "charge_mark",
+            "source": "status",
+            "function": "map",
+            "map": {
+              "charging": "⚡",
+              "full": "",
+              "discharging": ""
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "outputs": [
+    {
+      "key": "battery",
+      "label": "鼠标",
+      "short_label": "🖱️",
+      "format_val": "{{level}}{{charge_mark}}",
+      "unit": "%",
+      "color": "{{battery_color}}"
+    }
+  ]
+}
