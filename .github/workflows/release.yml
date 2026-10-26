@@ -1,0 +1,98 @@
+name: Build and release
+
+# Push a tag like v1.0.0 -> build on a Windows runner and publish a GitHub Release.
+# Manual run (Actions -> Build and release -> Run workflow) only produces artifacts.
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  APP: peripheral_battery_service
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install build dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install websocket-client pyinstaller
+
+      - name: Build single-file exe
+        run: pyinstaller --onefile --noconsole --name "$env:APP" service/peripheral_battery_service.py
+
+      - name: Locate 7-Zip
+        run: |
+          $sz = "$env:ProgramFiles\7-Zip\7z.exe"
+          if (-not (Test-Path $sz)) {
+            choco install 7zip -y --no-progress
+          }
+          if (-not (Test-Path $sz)) { throw "7-Zip not found" }
+          Add-Content -Path $env:GITHUB_ENV -Value "SEVENZIP=$sz"
+
+      - name: Stage portable package
+        run: |
+          $stage = "stage\peripheral-battery-portable"
+          New-Item -ItemType Directory -Force -Path $stage | Out-Null
+          Copy-Item "dist\$env:APP.exe" $stage
+          Copy-Item "plugins\MouseBattery.json" $stage
+          Copy-Item "packaging\install.bat" $stage
+          Copy-Item "packaging\uninstall.bat" $stage
+          Copy-Item "packaging\PORTABLE_README.txt" $stage
+          Get-ChildItem $stage | Select-Object Name, Length
+
+      - name: Build portable zip
+        run: |
+          & $env:SEVENZIP a -tzip -mx=9 "dist\peripheral-battery-portable-win64.zip" ".\stage\peripheral-battery-portable"
+          if ($LASTEXITCODE -ne 0) { throw "7z zip failed" }
+
+      - name: Build self-extracting installer
+        run: |
+          & $env:SEVENZIP a -t7z -mx=9 "payload.7z" ".\stage\peripheral-battery-portable\*"
+          if ($LASTEXITCODE -ne 0) { throw "7z payload failed" }
+          $sfx = Join-Path (Split-Path $env:SEVENZIP) "7z.sfx"
+          if (-not (Test-Path $sfx)) { throw "7z.sfx not found next to 7z.exe" }
+          cmd /c copy /b "$sfx" + "packaging\config.txt" + "payload.7z" "dist\peripheral-battery-setup.exe"
+          if (-not (Test-Path "dist\peripheral-battery-setup.exe")) { throw "SFX build failed" }
+
+      - name: Write checksums
+        run: |
+          $lines = Get-FileHash "dist\peripheral_battery_service.exe", "dist\peripheral-battery-portable-win64.zip", "dist\peripheral-battery-setup.exe" -Algorithm SHA256 |
+            ForEach-Object { "{0}  {1}" -f $_.Hash.ToLower(), (Split-Path $_.Path -Leaf) }
+          Set-Content -Path "dist\SHA256SUMS.txt" -Value $lines -Encoding ascii
+          Get-Content "dist\SHA256SUMS.txt"
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: peripheral-battery-win64
+          path: |
+            dist/peripheral_battery_service.exe
+            dist/peripheral-battery-portable-win64.zip
+            dist/peripheral-battery-setup.exe
+            dist/SHA256SUMS.txt
+
+      - name: Publish release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/peripheral_battery_service.exe
+            dist/peripheral-battery-portable-win64.zip
+            dist/peripheral-battery-setup.exe
+            dist/SHA256SUMS.txt
+          generate_release_notes: true
+          fail_on_unmatched_files: true

@@ -1,0 +1,6 @@
+;!@Install@!UTF-8!
+Title="peripheral-battery - Inphic mouse battery service"
+BeginPrompt="Install peripheral-battery (mouse battery service + LiteMonitor plugin)?"
+RunProgram="install.bat"
+ExtractDialogText="Installing..."
+;!@InstallEnd@!

@@ -62,19 +62,35 @@ python service/peripheral_battery_service.py
 
 见 [docs/protocol.md](docs/protocol.md)。
 
-## 打包说明（维护者）
+## 打包与发布（维护者）
+
+构建在 GitHub Actions 上完成，本地无需 Python 或 7-Zip：
 
 ```bash
-# 1. 打单文件 exe（需要 PyInstaller）
-pyinstaller --onefile --noconsole --name peripheral_battery_service service/peripheral_battery_service.py
-
-# 2a. 便携包：exe + plugins/MouseBattery.json + packaging/*.bat 打成 zip
-# 2b. 自解压安装包（需要 7-Zip）：
-7z a payload.7z peripheral_battery_service.exe MouseBattery.json install.bat uninstall.bat PORTABLE_README.txt
-copy /b "C:\Program Files\7-Zip\7z.sfx" + config.txt + payload.7z peripheral-battery-setup.exe
+git tag v1.0.0
+git push origin v1.0.0
 ```
 
-`packaging/` 目录含 install.bat / uninstall.bat / PORTABLE_README.txt。
+推送 `v*` tag 后，`.github/workflows/release.yml` 会在 `windows-latest` 上依次产出并在同名 Release 中发布：
+
+| 文件 | 说明 |
+| --- | --- |
+| `peripheral-battery-setup.exe` | 自解压安装包（7-Zip SFX + `packaging/config.txt`） |
+| `peripheral-battery-portable-win64.zip` | 绿色便携包（解压后运行 `install.bat`） |
+| `peripheral_battery_service.exe` | 仅服务本体（PyInstaller 单文件） |
+| `SHA256SUMS.txt` | 上述三个文件的 SHA-256 |
+
+在 Actions 页面手动触发（Run workflow）只产出 artifact，不创建 Release。安装包未做代码签名，首次运行会出现 SmartScreen 提示。
+
+本地手工构建（备用，需 PyInstaller 与 7-Zip）：
+
+```bat
+pyinstaller --onefile --noconsole --name peripheral_battery_service service/peripheral_battery_service.py
+7z a payload.7z peripheral_battery_service.exe MouseBattery.json install.bat uninstall.bat PORTABLE_README.txt
+copy /b "C:\Program Files\7-Zip\7z.sfx" + packaging\config.txt + payload.7z peripheral-battery-setup.exe
+```
+
+`packaging/` 目录含 install.bat / uninstall.bat / PORTABLE_README.txt / config.txt。
 
 ## 致谢
 
