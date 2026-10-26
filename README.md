@@ -43,6 +43,21 @@ python service/peripheral_battery_service.py
 
 把 `plugins/MouseBattery.json` 复制到 LiteMonitor 的 `resources/plugins/` 目录，重启 LiteMonitor，在插件设置中启用「鼠标电量」。
 
+## 接口与缓存
+
+`GET http://127.0.0.1:8712/battery` 返回：
+
+```json
+{"ok": true, "level": 90, "status": "discharging", "age_seconds": 1.4,
+ "source": "live", "stale": false}
+```
+
+- `source` — `live`（来自驱动的实时报文）或 `cache`（来自磁盘缓存）
+- `stale` — 非实时值为 `true`，用于区分「旧值」与「当前值」
+- `age_seconds` — 该电量数据距上次更新的秒数
+
+每次拿到实时值都会写入 `battery_cache.json`（与程序同目录）。服务重启、驱动重启或鼠标刚唤醒时，先用缓存里的最后一次电量应答，避免插件显示横杠；缓存超过 7 天视为失效。
+
 ## 协议细节
 
 见 [docs/protocol.md](docs/protocol.md)。
