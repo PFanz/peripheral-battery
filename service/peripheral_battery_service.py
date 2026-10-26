@@ -33,7 +33,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import websocket
 
-WS_URL = "ws://localhost:10085"
+WS_URL = os.environ.get("PB_WS_URL", "ws://localhost:10085")
 HTTP_HOST = "127.0.0.1"
 HTTP_PORT = int(os.environ.get("PB_HTTP_PORT", "8712"))  # override for tests
 if getattr(sys, "frozen", False):
@@ -42,6 +42,8 @@ if getattr(sys, "frozen", False):
 else:
     _APP_DIR = os.path.dirname(os.path.abspath(__file__))
 LOG_FILE = os.path.join(_APP_DIR, "peripheral_battery_service.log")
+CACHE_FILE = os.path.join(_APP_DIR, "battery_cache.json")
+CACHE_MAX_AGE = 86400 * 7  # ignore a cache older than a week
 
 # Capture hard crashes (C-level) and uncaught exceptions to the log file.
 _fault_stream = open(LOG_FILE, "a", encoding="utf-8", buffering=1)
@@ -66,11 +68,14 @@ lock = threading.Lock()
 state = {
     "device_id": None,
     "connection": None,
+    "connection_text": None,
     "level": None,
     "status": None,
     "status_text": None,
     "updated": None,
+    "source": None,          # "live" | "cache" | None
 }
+_last_cache_write = 0.0
 
 STATUS_TEXT = {1: "discharging", 2: "full", 3: "charging"}
 CONNECTION_TEXT = {128: "wired", 129: "wireless", 130: "wired-8k",
@@ -84,6 +89,44 @@ def log(msg):
             f.write(line + "\n")
     except OSError:
         pass
+
+
+def save_cache(snap):
+    """Persist the last good reading so a cold start can still show a value."""
+    tmp = CACHE_FILE + ".tmp"
+    try:
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(snap, f, ensure_ascii=False)
+        os.replace(tmp, CACHE_FILE)
+    except OSError as e:
+        log(f"cache write failed: {e}")
+
+
+def load_cache():
+    """Seed state from the on-disk cache (marked source='cache')."""
+    try:
+        with open(CACHE_FILE, encoding="utf-8") as f:
+            c = json.load(f)
+    except (OSError, ValueError):
+        return False
+    level = c.get("level")
+    saved = c.get("updated")
+    if level is None or saved is None or time.time() - saved > CACHE_MAX_AGE:
+        return False
+    with lock:
+        state.update({
+            "device_id": c.get("device_id"),
+            "connection": c.get("connection"),
+            "connection_text": c.get("connection_text"),
+            "level": level,
+            "status": c.get("status"),
+            "status_text": c.get("status_text"),
+            "updated": saved,
+            "source": "cache",
+        })
+    age = time.time() - saved
+    log(f"loaded cache: level={level}% status={c.get('status_text')} age={age / 3600:.1f}h")
+    return True
 
 
 def parse_message(raw):
@@ -104,6 +147,8 @@ def parse_message(raw):
     if not (0 <= level <= 100):
         return
     with lock:
+        changed = (state["level"] != level or state["status"] != stat
+                   or state["source"] != "live")
         state.update({
             "device_id": dev,
             "connection": conn,
@@ -112,7 +157,15 @@ def parse_message(raw):
             "status": stat,
             "status_text": STATUS_TEXT.get(stat, str(stat)),
             "updated": time.time(),
+            "source": "live",
         })
+        snap = {k: state[k] for k in ("device_id", "connection", "connection_text",
+                                     "level", "status", "status_text", "updated")}
+    global _last_cache_write
+    now = time.time()
+    if changed or now - _last_cache_write > 60:
+        _last_cache_write = now
+        save_cache(snap)
     log(f"packet {raw!r} -> device={dev} conn={conn} status={stat} level={level}%")
 
 
@@ -176,6 +229,8 @@ class Handler(BaseHTTPRequestHandler):
             "level": snap["level"],
             "status": snap["status_text"],
             "age_seconds": age,
+            "source": snap.get("source"),
+            "stale": snap.get("source") != "live",
         }, ensure_ascii=False).encode("utf-8")
         self.send_response(200)
         self.send_header("Content-Type", "application/json; charset=utf-8")
@@ -189,6 +244,7 @@ class Handler(BaseHTTPRequestHandler):
 
 if __name__ == "__main__":
     log(f"service starting (pid={os.getpid()})")
+    load_cache()  # serve last known value until the first live packet arrives
     threading.Thread(target=ws_thread, daemon=True, name="ws").start()
     threading.Thread(target=heartbeat, daemon=True, name="hb").start()
     server = None

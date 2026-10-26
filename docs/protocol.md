@@ -17,3 +17,34 @@
 - 设备 ID 示例：147 = IN10 系列（KP 8K）
 
 逆向方法：下载网页驱动的 JS bundle，从中提取 `batteryStatus` 相关的解析逻辑与 WebSocket 地址。
+
+## 本地 HTTP 接口
+
+服务把解析结果缓存到磁盘（`battery_cache.json`，与可执行文件同目录），启动时先加载，避免开机时序导致前端拿到空值。
+
+`GET http://127.0.0.1:8712/battery`
+
+```json
+{
+  "ok": true,
+  "device_id": 147,
+  "connection": "wired-8k",
+  "level": 90,
+  "status": "discharging",
+  "age_seconds": 2.0,
+  "source": "live",
+  "stale": false
+}
+```
+
+| 字段 | 说明 |
+| --- | --- |
+| `level` | 电量百分比（0–100） |
+| `status` | `discharging` / `charging` / `full` |
+| `age_seconds` | 距该读数产生的秒数（缓存值会明显偏大） |
+| `source` | `live` 实时数据 / `cache` 上次已知值 |
+| `stale` | `source != "live"` 时为 `true`，表示读数是旧的 |
+
+缓存写入策略：数值变化时立即落盘，否则最多每 60 秒写一次；超过 7 天的缓存不再加载。
+
+调试用环境变量：`PB_HTTP_PORT`（默认 8712）、`PB_WS_URL`（默认 `ws://localhost:10085`）。
